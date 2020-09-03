@@ -29,14 +29,14 @@ import pickle
 
 
 def load_data(database_filepath):
-    engine = create_engine(database_filepath)
-    df = pd.read_sql_table('InsertTableName', con = engine)
+    engine = create_engine('sqlite:///./{}'.format(database_filepath))
+    df = pd.read_sql_table('disaster_data', con = engine)
     X = df.iloc[:, 1]
     Y = df.iloc[:, 4:]
     category_name = Y.columns
     return X, Y, category_name 
 
-def tokenize(ttext, language = 'english', lem = True):
+def tokenize(text, language = 'english', lem = True):
    ## normalized
     text_norm = re.sub(r'[^a-zA-Z0-9]'," ", text.lower())
     ## tokenized
@@ -51,49 +51,47 @@ def tokenize(ttext, language = 'english', lem = True):
 
 
 def build_model():
-     pipeline = Pipeline([
+    pipeline = Pipeline([
         ('vect', CountVectorizer(tokenizer=tokenize)),
         ('tfidf', TfidfTransformer()),
         ('clf', MultiOutputClassifier(RandomForestClassifier()))
     ])
-
-    parameters = {
-        'clf__estimator__n_estimators':  [10,20],
-        'clf__estimator__min_samples_split': [2, 3]
-    }
+    parameters = {'clf__estimator__n_estimators': [10],'clf__estimator__min_samples_split':[2]}
 
     cv = GridSearchCV(estimator = pipeline, param_grid=parameters)
 
     return cv
 
-def display_results(y_test, y_pred, i):
+def display_results(Y_test, y_pred, i, Y):
     labels = np.unique(y_pred)
-    confusion_mat = confusion_matrix(y_test, y_pred)
-    accuracy = sum(y_pred == y_test)/len(y_pred)
+    confusion_mat = confusion_matrix(Y_test, y_pred)
+    accuracy = sum(y_pred == Y_test)/len(y_pred)
     
     Labels =  Y.columns[i]
     Confusion_Matrix =  confusion_mat
     accuracy = accuracy
     return labels, Confusion_Matrix, accuracy
 
-def evaluate_model(model, X_test, Y_test, category_names):
+def evaluate_model(model, X_test, Y_test, category_names, Y):
     y_pred = model.predict(X_test)
-    y_pred_df = pd.DataFrame(data = y_pred, columns = category_names, index = y_test.index)
+    y_pred_df = pd.DataFrame(data = y_pred, columns = category_names, index = Y_test.index)
+    accuracy_lst = []
     for i in range(y_pred_df.shape[1]):
-        labels, Confusion_Matrix, accuracy = display_results(y_test.iloc[:,i], y_pred_df.iloc[:,i], i)
+        labels, Confusion_Matrix, accuracy = display_results(Y_test.iloc[:,i], y_pred_df.iloc[:,i], i, Y)
         accuracy_lst.append(accuracy)
     print('Mean accuracy of Model : {}'.format(np.mean(accuracy_lst)))
    
 
 
 def save_model(model, model_filepath):
-    filename = 'finalized_model.pkl'
+    filename = model_filepath
     pickle.dump(model, open(filename, 'wb'))
 
 
 def main():
     if len(sys.argv) == 3:
         database_filepath, model_filepath = sys.argv[1:]
+        print(database_filepath)
         print('Loading data...\n    DATABASE: {}'.format(database_filepath))
         X, Y, category_names = load_data(database_filepath)
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2)
@@ -105,7 +103,7 @@ def main():
         model.fit(X_train, Y_train)
         
         print('Evaluating model...')
-        evaluate_model(model, X_test, Y_test, category_names)
+        evaluate_model(model, X_test, Y_test, category_names, Y)
 
         print('Saving model...\n    MODEL: {}'.format(model_filepath))
         save_model(model, model_filepath)
